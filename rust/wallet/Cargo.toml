@@ -1,0 +1,45 @@
+[package]
+name = "fastwithdraw-wallet"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+
+[features]
+# Keys in Google Cloud KMS.
+gcp-kms = ["fastwithdraw-signer/gcp-kms", "dep:google-cloud-kms-v1"]
+
+[dependencies]
+fastwithdraw-alerts = { workspace = true }
+anyhow = { workspace = true }
+axum = { workspace = true }
+bdk_esplora = { workspace = true }
+bdk_wallet = { workspace = true }
+base64 = { workspace = true }
+buffa = { workspace = true }
+clap = { workspace = true }
+connectrpc = { workspace = true, features = ["axum"] }
+fastwithdraw-proto = { workspace = true }
+fastwithdraw-signer = { workspace = true }
+fastwithdraw-thunder = { workspace = true }
+google-cloud-kms-v1 = { workspace = true, optional = true }
+hex = { workspace = true }
+http = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lib]
+path = "lib.rs"
+doctest = false # no doc tests; skips an empty run per crate
+
+[[bin]]
+name = "fastwithdraw-wallet"
+path = "bin/main.rs"
+test = false # no tests in the binaries
+
+[lints]
+workspace = true

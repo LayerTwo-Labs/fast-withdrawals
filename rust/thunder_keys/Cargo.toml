@@ -1,0 +1,31 @@
+[package]
+name = "fastwithdraw-thunder-keys"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+
+# Kept apart from the RPC client so the offline key tool has no network,
+# TLS or async dependencies.
+[dependencies]
+bip39 = { workspace = true }
+blake3 = { workspace = true }
+bs58 = { workspace = true }
+curve25519-dalek = { workspace = true }
+hmac = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+
+[lib]
+path = "lib.rs"
+doctest = false # no doc tests; skips an empty run per crate
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "thunder-xpub"
+path = "bin/thunder_xpub.rs"
+test = false # no tests in the binaries

@@ -1,0 +1,25 @@
+# Enforcer protos, straight from LayerTwo-Labs/bip300301_enforcer at a pinned
+# commit. Regenerate with `just proto`. Move `ref` along with the enforcer
+# release scripts/setup_integration_tests.sh downloads.
+version: v2
+clean: true
+inputs:
+  - git_repo: https://github.com/LayerTwo-Labs/bip300301_enforcer.git
+    ref: 9c82499f91a010e22e3f31755b3799d7da246895
+    depth: 1
+    paths:
+      - proto/cusf/common
+      - proto/cusf/mainchain
+plugins:
+  - remote: buf.build/anthropics/buffa:v0.9.1
+    out: generated/buffa
+    opt:
+      - file_per_package=true
+      - unknown_fields=false
+      - json=true
+      - views=true
+  - remote: buf.build/connectrpc/rust:v0.9.0
+    out: generated/connect
+    opt:
+      - file_per_package
+      - buffa_module=crate::enforcer::generated::buffa

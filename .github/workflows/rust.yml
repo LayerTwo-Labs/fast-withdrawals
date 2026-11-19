@@ -1,0 +1,206 @@
+name: Rust
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: rust
+
+jobs:
+  generated-proto:
+    name: Check generated protobuf code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
+        with:
+          version: "1.70.0"
+          setup_only: true
+          github_token: ${{ github.token }}
+      - name: Format and lint
+        working-directory: .
+        run: |
+          buf format --diff --exit-code
+          buf lint
+      # The public API is used by clients we don't control; changing it
+      # incompatibly needs a new package version (fastwithdraw.v2).
+      - name: Check for breaking changes against the base branch
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          REPO: ${{ github.server_url }}/${{ github.repository }}.git
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Nothing to compare against while the base branch has no schema
+          # yet (the first import).
+          git fetch --depth=1 "$REPO" "$BASE_REF"
+          if ! git ls-tree -r --name-only FETCH_HEAD -- proto | grep -q '\.proto$'; then
+            echo "No .proto files on $BASE_REF; skipping."
+            exit 0
+          fi
+          buf breaking --against "$REPO#branch=$BASE_REF"
+      - name: Regenerate
+        run: |
+          buf generate --template buf.gen.yaml
+          (cd integration_tests && buf generate --template buf.gen.yaml)
+      - name: Assert no changed or new files against checked-in code
+        run: |
+          git status --porcelain -- .
+          test -z "$(git status --porcelain -- .)"
+
+  deny:
+    name: Advisories, licenses, bans and sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        with:
+          tool: cargo-deny@0.19.4
+      - run: cargo deny --locked check
+
+  lint-test:
+    name: Format, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+      - run: cargo fmt --all -- --check
+      - run: cargo test --workspace --all-features --locked
+
+  # Every feature set an image is released with compiles and lints cleanly.
+  # The sets match the image variants in rust-docker.yml and `just test`;
+  # keep them in step.
+  clippy:
+    name: Lint (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: plain image
+            flags: ""
+          - name: -gcp image
+            flags: --features "fastwithdraw-api/gcp-kms fastwithdraw-api/gcp-auth fastwithdraw-wallet/gcp-kms"
+          - name: all features
+            flags: --all-features
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+          key: ${{ matrix.name }}
+      - env:
+          FLAGS: ${{ matrix.flags }}
+        run: eval "cargo clippy --workspace --all-targets --locked $FLAGS -- -D warnings"
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install SoftHSM
+        run: sudo apt-get update && sudo apt-get install -y softhsm2
+      - name: Install toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+      # bitcoind, the enforcer, Thunder and a source-built electrs.
+      - name: Cache integration-test dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .integration-deps
+          key: integration-deps-${{ runner.os }}-${{ hashFiles('rust/scripts/setup_integration_tests.sh') }}
+      - name: Cache Postgres binaries
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.theseus
+          key: postgresql-embedded-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+      # Built in a step of its own, so dependency build scripts don't see the
+      # token below.
+      - name: Download dependencies and build
+        run: |
+          ./scripts/setup_integration_tests.sh
+          cargo build --locked --bins --example integration_tests
+      - name: Run integration tests
+        env:
+          # postgresql_embedded fetches Postgres from GitHub releases. The
+          # harness doesn't pass it on to the processes under test.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/run_integration_tests.sh
+      - name: Upload process logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: integration-test-logs
+          path: |
+            /tmp/fastwithdraw-it/**/*.txt
+            /tmp/fastwithdraw-it/**/*.log
+          retention-days: 7
+
+  # Against real Cloud KMS keys. Runs only when the repository is configured
+  # with a workload identity provider and the two key versions, and only on
+  # master or by hand: never for pull requests, whose code could use the
+  # credentials. The provider must also restrict itself with an
+  # attribute_condition on this repository (and ideally refs/heads/master),
+  # and its service account may only sign with test-only keys.
+  real-kms:
+    name: Signers against Cloud KMS
+    if: >-
+      vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_KMS_TEST_SERVICE_ACCOUNT }}
+      - name: Install toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+      - name: Run the ignored real-KMS test
+        env:
+          FASTWITHDRAW_KMS_TX_KEY: ${{ vars.FASTWITHDRAW_KMS_TX_KEY }}
+          FASTWITHDRAW_KMS_QUOTE_KEY: ${{ vars.FASTWITHDRAW_KMS_QUOTE_KEY }}
+        run: cargo test -p fastwithdraw-signer --features gcp-kms --locked -- --ignored real_kms

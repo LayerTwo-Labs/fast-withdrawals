@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package fastwithdraw.wallet.v1;
+
+// Internal: only the api service and the scheduler may call it. Every payout
+// is checked against Thunder and the wallet's own limits, so a compromised
+// caller can't obtain payouts for payments that don't exist.
+service WalletService {
+  // Records a new quote's destination and amount. Pay only ever pays what was
+  // registered. Idempotent per withdrawal ID.
+  rpc RegisterQuote(RegisterQuoteRequest) returns (RegisterQuoteResponse);
+
+  // Pays a confirmed L2 payment out on L1. Idempotent per withdrawal ID.
+  rpc Pay(PayRequest) returns (PayResponse);
+
+  // Returns a withdrawal's current payout transaction, which changes when a
+  // stuck payout is fee-bumped.
+  rpc GetPayout(GetPayoutRequest) returns (GetPayoutResponse);
+
+  // Returns the balance available for payouts, the daily cap left, and where
+  // L1 and Thunder stand.
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+
+  // Rebroadcasts pending payouts and fee-bumps stuck ones. Called
+  // periodically by a scheduler.
+  rpc Tick(TickRequest) returns (TickResponse);
+}
+
+message RegisterQuoteRequest {
+  string withdrawal_id = 1;
+
+  // Index of the L2 payment address, derived from the Thunder xpub.
+  uint32 l2_index = 2;
+
+  string l1_address = 3;
+
+  uint64 l1_payout_sats = 4;
+
+  // The payout plus the service fee.
+  uint64 l2_payment_sats = 5;
+}
+
+message RegisterQuoteResponse {}
+
+message PayRequest {
+  string withdrawal_id = 1;
+
+  // Index of the L2 payment address, derived from the Thunder xpub.
+  uint32 l2_index = 2;
+
+  string l2_payment_txid = 3;
+
+  uint32 l2_payment_vout = 4;
+
+  string l1_address = 5;
+
+  uint64 l1_payout_sats = 6;
+
+  // Where the caller saw the L2 payment mined. The wallet re-verifies it, and
+  // searches recent blocks when unset.
+  L2Block l2_block = 7;
+}
+
+message L2Block {
+  uint32 height = 1;
+
+  string hash = 2;
+}
+
+message PayResponse {
+  string l1_payout_txid = 1;
+}
+
+message GetPayoutRequest {
+  string withdrawal_id = 1;
+}
+
+message GetPayoutResponse {
+  // Changes when a stuck payout is fee-bumped.
+  string l1_payout_txid = 1;
+
+  // Deep enough that it is no longer watched or replaced.
+  bool settled = 2;
+}
+
+message GetBalanceRequest {}
+
+message GetBalanceResponse {
+  // Confirmed coins plus the wallet's own unconfirmed change.
+  uint64 spendable_sats = 1;
+
+  // False when Thunder's L2 tip was BMM'd in an L1 block that is reorged out
+  // or too old. Pay refuses meanwhile.
+  bool thunder_synced = 2;
+
+  // The wallet's only address, fixed by the payout key. Fund it here.
+  string hot_wallet_address = 3;
+
+  // What's left of the rolling 24-hour payout cap.
+  uint64 daily_cap_left_sats = 4;
+
+  // Height of the L1 chain tip.
+  uint32 l1_tip_height = 5;
+
+  // Height of Thunder's L2 tip. Unset while Thunder has no L2 blocks.
+  optional uint32 l2_tip_height = 6;
+
+  // Height of the L1 block that BMM'd Thunder's L2 tip.
+  optional uint32 l2_tip_bmm_height = 7;
+
+  // Peers Thunder is connected to. Unset when Thunder couldn't say.
+  optional uint32 thunder_connected_peers = 8;
+
+  // Why thunder_synced is false.
+  string thunder_unsynced_reason = 9;
+}
+
+message TickRequest {}
+
+message TickResponse {
+  // Payouts not yet settled: still being rebroadcast or fee-bumped.
+  uint32 pending_payouts = 1;
+}

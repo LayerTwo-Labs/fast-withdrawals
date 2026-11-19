@@ -1,0 +1,35 @@
+# Generated code is checked in under proto/generated. Regenerate with
+# `just proto`.
+version: v2
+clean: true
+inputs:
+  - directory: ../proto
+plugins:
+  # The public API, with its schema embedded (`descriptor_pool()`) for the
+  # api to serve over gRPC reflection. It is generated apart from the
+  # internal packages because the embedded schema covers everything a plugin
+  # run sees, and theirs must not be served.
+  - remote: buf.build/anthropics/buffa:v0.9.1
+    out: proto/generated/buffa
+    types:
+      - fastwithdraw.v1
+    opt:
+      - file_per_package=true
+      - unknown_fields=false
+      - json=true
+      - views=true
+      - reflection=true
+  - remote: buf.build/anthropics/buffa:v0.9.1
+    out: proto/generated/buffa
+    exclude_types:
+      - fastwithdraw.v1
+    opt:
+      - file_per_package=true
+      - unknown_fields=false
+      - json=true
+      - views=true
+  - remote: buf.build/connectrpc/rust:v0.9.0
+    out: proto/generated/connect
+    opt:
+      - file_per_package
+      - buffa_module=crate::generated::buffa

@@ -1,0 +1,71 @@
+version: 2
+updates:
+  # The Cargo workspace lives under rust/, not at the repository root.
+  # thunder_types is a git dependency whose tag also picks the Thunder release
+  # the integration tests download; a PR moving it fails them until the
+  # THUNDER_SHA256 sums in rust/scripts/setup_integration_tests.sh are updated.
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "weekly"
+    # New releases wait a week, so a compromised or yanked release is usually
+    # caught before it is proposed. Security updates aren't delayed.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      # connectrpc pins buffa with a hard requirement, so the
+      # two stacks must move together
+      buffa:
+        patterns:
+          - "buffa"
+          - "buffa-*"
+          - "connectrpc"
+          - "connectrpc-*"
+      # google-cloud-gax, -auth and -kms-v1 are released in lockstep and
+      # require matching versions of each other.
+      google-cloud:
+        patterns:
+          - "google-cloud-*"
+      # bdk_esplora pins the bdk_chain/bdk_core versions bdk_wallet uses.
+      bdk:
+        patterns:
+          - "bdk_*"
+      cargo-minor-and-patch:
+        # An explicit "*" is required: a group without patterns
+        # outranks any wildcard pattern in dependabot's group
+        # assignment, which would pull the stacks above out of
+        # their own groups.
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Base images in rust/Dockerfile are pinned by digest; dependabot moves
+  # the tag and digest together.
+  - package-ecosystem: "docker"
+    directory: "/rust"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    ignore:
+      # The rust image follows rust-toolchain.toml (CI passes the channel as
+      # RUST_VERSION), so its tag is a toolchain decision made by hand, and
+      # its digest has to be updated with it.
+      - dependency-name: "rust"
