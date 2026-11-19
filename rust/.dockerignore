@@ -1,0 +1,13 @@
+target/
+integrationtests.env
+docs/
+scripts/
+*.md
+integration_tests/proto/
+.DS_Store
+.env
+*.env
+mnemonic*.txt
+*.pem
+plan*.json
+signed*.json

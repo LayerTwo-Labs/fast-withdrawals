@@ -1,0 +1,52 @@
+[package]
+name = "fastwithdraw-integration-tests"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+axum = { workspace = true, features = ["query"] }
+base64 = { workspace = true }
+bitcoin = { workspace = true }
+buffa = { workspace = true }
+buffa-types = { workspace = true }
+connectrpc = { workspace = true, features = ["client"] }
+connectrpc-reflection = { workspace = true, features = ["client"] }
+serde = { workspace = true }
+dotenvy = { workspace = true }
+ed25519-dalek = { workspace = true }
+futures = { workspace = true }
+fastwithdraw-api = { workspace = true }
+fastwithdraw-proto = { workspace = true }
+fastwithdraw-thunder = { workspace = true }
+hex = { workspace = true }
+http = { workspace = true }
+jsonwebtoken = { workspace = true }
+libtest-mimic = { workspace = true }
+parking_lot = { workspace = true }
+postgresql_embedded = { workspace = true }
+reqwest = { workspace = true }
+reserve-port = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+temp-dir = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+
+[lib]
+path = "lib.rs"
+test = false
+doctest = false
+
+[[example]]
+name = "integration_tests"
+path = "main.rs"
+harness = false
+test = false
+
+[lints]
+workspace = true

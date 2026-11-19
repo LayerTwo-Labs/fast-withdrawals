@@ -1,0 +1,56 @@
+[package]
+name = "fastwithdraw-api"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+
+[features]
+# Keys in Google Cloud KMS.
+gcp-kms = ["fastwithdraw-signer/gcp-kms", "dep:google-cloud-kms-v1"]
+# The scheduler authenticates with Google ID tokens (Cloud Scheduler).
+gcp-auth = ["dep:base64", "dep:google-cloud-auth", "dep:serde_json"]
+
+[dependencies]
+fastwithdraw-alerts = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true, optional = true }
+axum = { workspace = true }
+bitcoin = { workspace = true }
+buffa = { workspace = true }
+buffa-types = { workspace = true }
+clap = { workspace = true }
+connectrpc = { workspace = true, features = ["axum", "client-tls"] }
+connectrpc-reflection = { workspace = true }
+ed25519-dalek = { workspace = true }
+fastwithdraw-proto = { workspace = true }
+fastwithdraw-signer = { workspace = true }
+fastwithdraw-thunder = { workspace = true }
+google-cloud-auth = { workspace = true, optional = true, features = ["idtoken"] }
+google-cloud-kms-v1 = { workspace = true, optional = true }
+hex = { workspace = true }
+http = { workspace = true }
+parking_lot = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+webpki-roots = { workspace = true }
+
+[lib]
+path = "lib.rs"
+doctest = false # no doc tests; skips an empty run per crate
+
+[[bin]]
+name = "fastwithdraw-api"
+path = "bin/main.rs"
+test = false # no tests in the binaries
+
+[lints]
+workspace = true

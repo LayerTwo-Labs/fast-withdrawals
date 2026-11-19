@@ -1,0 +1,271 @@
+syntax = "proto3";
+
+package fastwithdraw.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Pays out L1 coins for L2 coins right away, for a fee, instead of waiting
+// for a sidechain withdrawal.
+//
+// Amounts are in satoshis. Transaction IDs are hex, in block explorer byte
+// order. Any method fails with UNAVAILABLE while a backing service is down.
+service FastWithdrawalService {
+  // Quotes a withdrawal: a fresh L2 address to pay and a signed, expiring
+  // quote.
+  //
+  // Errors:
+  // - INVALID_ARGUMENT: bad address, amount or sidechain.
+  // - ALREADY_EXISTS: request_id reused with different parameters.
+  // - RESOURCE_EXHAUSTED: the hot wallet can't fund this payout right now;
+  //   GetStatus says how much it can.
+  // - UNAVAILABLE: payouts are paused; GetStatus says why.
+  rpc CreateWithdrawal(CreateWithdrawalRequest) returns (CreateWithdrawalResponse);
+
+  // Reports the L2 payment's outpoint. Mined payments are found on their own
+  // until an hour after expires_at; later ones must be reported here.
+  // Idempotent.
+  //
+  // Errors:
+  // - NOT_FOUND: no such withdrawal.
+  // - INVALID_ARGUMENT: malformed txid, or the outpoint doesn't pay
+  //   l2_payment_address at least the minimum payout.
+  // - ALREADY_EXISTS: the outpoint pays another withdrawal, or this
+  //   withdrawal was paid by a different one.
+  rpc SubmitPayment(SubmitPaymentRequest) returns (SubmitPaymentResponse);
+
+  // Returns a withdrawal's current state.
+  rpc GetWithdrawal(GetWithdrawalRequest) returns (GetWithdrawalResponse);
+
+  // Gives the L2 address to refund an UNDERPAID withdrawal to. An operator
+  // sends the refund, less a network fee. Idempotent for the same address.
+  //
+  // Errors:
+  // - INVALID_ARGUMENT: not a canonical address on the sidechain, or one of
+  //   the service's own.
+  // - FAILED_PRECONDITION: the withdrawal isn't UNDERPAID.
+  // - ALREADY_EXISTS: a different refund address was already given.
+  rpc RequestRefund(RequestRefundRequest) returns (RequestRefundResponse);
+
+  // Returns the fixed terms: signing key, fee, payout limits and
+  // confirmation policy.
+  rpc GetServiceInfo(GetServiceInfoRequest) returns (GetServiceInfoResponse);
+
+  // Returns whether withdrawals are accepted, how large they can be right
+  // now, and where L1 and the sidechains stand.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+}
+
+enum WithdrawalStatus {
+  WITHDRAWAL_STATUS_UNSPECIFIED = 0;
+
+  // Waiting for the L2 payment.
+  WITHDRAWAL_STATUS_AWAITING_PAYMENT = 1;
+
+  // The payment is seen and waiting for required_confirmations.
+  WITHDRAWAL_STATUS_CONFIRMING_PAYMENT = 2;
+
+  // The payment is confirmed and the payout is due. Waits here while the hot
+  // wallet can't fund it.
+  WITHDRAWAL_STATUS_PAYMENT_CONFIRMED = 3;
+
+  // Final. The payout was broadcast. l1_payout_txid can still change if a
+  // stuck payout is fee-bumped.
+  WITHDRAWAL_STATUS_PAID = 4;
+
+  // No payment before expires_at. A late payment is still honored and moves
+  // the withdrawal on to CONFIRMING_PAYMENT; see SubmitPayment.
+  WITHDRAWAL_STATUS_EXPIRED = 5;
+
+  // Final. The payout was refused for a reason retrying won't fix; an
+  // operator resolves it.
+  WITHDRAWAL_STATUS_FAILED = 6;
+
+  // A confirmed payment below l2_payment_sats but at least the minimum
+  // payout (smaller ones are ignored). Refunded on request. Until then, a
+  // full payment to the same address is still paid out.
+  WITHDRAWAL_STATUS_UNDERPAID = 7;
+
+  // Final. The underpaid payment was sent back to l2_refund_address.
+  WITHDRAWAL_STATUS_REFUNDED = 8;
+}
+
+message Withdrawal {
+  string withdrawal_id = 1;
+
+  // Only "thunder" for now.
+  string sidechain = 2;
+
+  // Unique to this withdrawal.
+  string l2_payment_address = 3;
+
+  // l1_payout_sats + service_fee_sats. Less is UNDERPAID; any excess is kept.
+  uint64 l2_payment_sats = 4;
+
+  // Where the payout goes.
+  string l1_address = 5;
+
+  // What l1_address receives. The service pays the L1 network fee.
+  uint64 l1_payout_sats = 6;
+
+  // ceil(l1_payout_sats * fee_basis_points / 10000).
+  uint64 service_fee_sats = 7;
+
+  // L2 confirmations the payment needs before it is paid out.
+  uint32 required_confirmations = 8;
+
+  WithdrawalStatus status = 9;
+
+  // Pay before this. Whole seconds.
+  google.protobuf.Timestamp expires_at = 10;
+
+  // The L2 payment's outpoint, once seen.
+  string l2_payment_txid = 11;
+
+  uint32 l2_payment_vout = 12;
+
+  // The payout transaction, once PAID.
+  string l1_payout_txid = 13;
+
+  // Ed25519 signature by GetServiceInfo's quote_signing_public_key over
+  // these parts concatenated, each prefixed with its length as an 8-byte
+  // big-endian integer:
+  //   1. "fastwithdraw.quote.v1" and a zero byte (22 bytes)
+  //   2. withdrawal_id, UTF-8
+  //   3. sidechain, UTF-8
+  //   4. l2_payment_address, UTF-8
+  //   5. l2_payment_sats, 8-byte big-endian
+  //   6. l1_address, UTF-8
+  //   7. l1_payout_sats, 8-byte big-endian
+  //   8. service_fee_sats, 8-byte big-endian
+  //   9. required_confirmations, 8-byte big-endian
+  //   10. expires_at in Unix seconds, 8-byte big-endian
+  // Signed as is (pure Ed25519), not hashed first.
+  bytes quote_signature = 14;
+
+  google.protobuf.Timestamp created_at = 15;
+
+  google.protobuf.Timestamp updated_at = 16;
+
+  // What the payment actually paid, for UNDERPAID and REFUNDED withdrawals.
+  uint64 l2_received_sats = 17;
+
+  // Where the refund goes, once requested.
+  string l2_refund_address = 18;
+}
+
+message CreateWithdrawalRequest {
+  // A caller-generated UUID. Reusing it returns the same quote.
+  string request_id = 1;
+
+  // Only "thunder" for now.
+  string sidechain = 2;
+
+  // Where the payout goes, on the service's L1 network.
+  string l1_address = 3;
+
+  // What l1_address should receive, within GetServiceInfo's payout limits.
+  uint64 l1_payout_sats = 4;
+}
+
+message CreateWithdrawalResponse {
+  Withdrawal withdrawal = 1;
+}
+
+message SubmitPaymentRequest {
+  string withdrawal_id = 1;
+
+  string l2_payment_txid = 2;
+
+  uint32 l2_payment_vout = 3;
+}
+
+message SubmitPaymentResponse {
+  Withdrawal withdrawal = 1;
+}
+
+message RequestRefundRequest {
+  string withdrawal_id = 1;
+
+  // An address on the withdrawal's sidechain.
+  string l2_refund_address = 2;
+}
+
+message RequestRefundResponse {
+  Withdrawal withdrawal = 1;
+}
+
+message GetWithdrawalRequest {
+  string withdrawal_id = 1;
+}
+
+message GetWithdrawalResponse {
+  Withdrawal withdrawal = 1;
+}
+
+message GetServiceInfoRequest {}
+
+message GetServiceInfoResponse {
+  // The 32-byte Ed25519 key quotes are signed with; see
+  // Withdrawal.quote_signature.
+  bytes quote_signing_public_key = 1;
+
+  // The service fee, in hundredths of a percent of the payout.
+  uint32 fee_basis_points = 2;
+
+  uint64 min_payout_sats = 3;
+
+  // The configured cap per payout. GetStatus's max_payout_now_sats may be
+  // less.
+  uint64 max_payout_sats = 4;
+
+  repeated SidechainPolicy sidechains = 5;
+
+  // The L1 address payouts are sent from. Its balance is the payout
+  // liquidity. Empty while the wallet can't be reached.
+  string hot_wallet_address = 6;
+}
+
+message SidechainPolicy {
+  string sidechain = 1;
+
+  // L2 confirmations a payment needs before it is paid out.
+  uint32 required_confirmations = 2;
+}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  // Whether CreateWithdrawal accepts a min_payout_sats withdrawal right now.
+  bool accepting_withdrawals = 1;
+
+  // Why not, when accepting_withdrawals is false.
+  string paused_reason = 2;
+
+  // The largest payout CreateWithdrawal accepts right now. Zero while paused.
+  uint64 max_payout_now_sats = 3;
+
+  // What the hot wallet can spend on payouts.
+  uint64 hot_wallet_balance_sats = 4;
+
+  // What's left of the rolling 24-hour payout cap.
+  uint64 daily_cap_left_sats = 5;
+
+  // Height of the L1 chain tip.
+  uint32 l1_tip_height = 6;
+
+  repeated SidechainStatus sidechains = 7;
+}
+
+message SidechainStatus {
+  string sidechain = 1;
+
+  // Height of the sidechain node's tip. Unset while it has no blocks.
+  optional uint32 tip_height = 2;
+
+  // Height of the L1 block that BMM'd the tip. Far behind l1_tip_height
+  // pauses payouts.
+  optional uint32 tip_bmm_height = 3;
+
+  // Peers the sidechain node is connected to. Unset when it couldn't say.
+  optional uint32 connected_peers = 4;
+}

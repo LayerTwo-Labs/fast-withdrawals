@@ -1,0 +1,50 @@
+# cargo-deny, run in CI: `cargo deny check`.
+
+[graph]
+# The gcp-kms variants ship too.
+all-features = true
+
+[advisories]
+# Vulnerabilities fail the check. Unmaintained crates fail only when a
+# workspace crate depends on them directly; deeper ones are upstream's call.
+unmaintained = "workspace"
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    # Thunder's types, for the sweep tool.
+    "https://github.com/LayerTwo-Labs/thunder-rust",
+    # Thunder's own git dependencies.
+    "https://github.com/ZcashFoundation/frost",
+    "https://github.com/mit-dci/rustreexo",
+]
+
+[licenses]
+# Permissive licenses only, so the MIT release (and the images, which bundle
+# every dependency) can be redistributed without copyleft obligations. Add to
+# the list deliberately: a new license here is a new obligation.
+allow = [
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    # webpki-roots' Mozilla root certificate data.
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MITNFA",
+    # postgresql_embedded, for the integration tests.
+    "PostgreSQL",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+[licenses.private]
+# The workspace's own crates (publish = false); they are MIT.
+ignore = true

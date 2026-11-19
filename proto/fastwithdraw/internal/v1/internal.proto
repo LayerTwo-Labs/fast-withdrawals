@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package fastwithdraw.internal.v1;
+
+// For the operator and the scheduler, not the public. Reach the api from
+// inside its network, or send the operator token as `Authorization: Bearer
+// <token>` through the public load balancer.
+service InternalService {
+  // Finds L2 payments, expires stale quotes, and pays out confirmed
+  // withdrawals. Called periodically by a scheduler, e.g. once a minute.
+  rpc Tick(TickRequest) returns (TickResponse);
+
+  // Lists the L2 payment address indexes of paid-out withdrawals, whose
+  // payments are the operator's to sweep. Payments to other withdrawals must
+  // stay put: the payout checks them first.
+  rpc ListPaidIndexes(ListPaidIndexesRequest) returns (ListPaidIndexesResponse);
+}
+
+message TickRequest {}
+
+message TickResponse {}
+
+message ListPaidIndexesRequest {}
+
+message ListPaidIndexesResponse {
+  // Indexes into the Thunder xpub's receive addresses, ascending. Includes
+  // ones already swept.
+  repeated uint32 l2_indexes = 1;
+}
