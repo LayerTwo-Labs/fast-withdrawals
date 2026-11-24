@@ -4604,7 +4604,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -4641,8 +4641,8 @@ dependencies = [
 
 [[package]]
 name = "thunder_types"
-version = "0.18.3"
-source = "git+https://github.com/LayerTwo-Labs/thunder-rust?tag=v0.18.3#609950dd540c6c66d7733fc7e90f5a882386e905"
+version = "0.19.2"
+source = "git+https://github.com/LayerTwo-Labs/thunder-rust?tag=v0.19.2#f8f6c00bb8d9e271925ba4de1f9839fa02cd46fd"
 dependencies = [
  "bitcoin",
  "blake3",
