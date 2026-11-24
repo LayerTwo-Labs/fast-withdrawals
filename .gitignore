@@ -1,0 +1,22 @@
+rust/target/
+rust/integrationtests.env
+.integration-deps/
+.DS_Store
+
+# Operator secrets and sweep files that tools invite creating here.
+.env
+*.env
+mnemonic*.txt
+*.pem
+plan*.json
+signed*.json
+
+# Terraform working state, for when terraform/ is published.
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Kept locally, not published (yet).
+/DESIGN.md
+/terraform/
+/.github/workflows/terraform.yml

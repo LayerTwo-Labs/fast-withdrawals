@@ -1,0 +1,43 @@
+[package]
+name = "fastwithdraw-signer"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+
+[features]
+# Google Cloud KMS signers.
+gcp-kms = ["dep:bytes", "dep:crc32c", "dep:google-cloud-kms-v1"]
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bitcoin = { workspace = true }
+bytes = { workspace = true, optional = true }
+crc32c = { workspace = true, optional = true }
+cryptoki = { workspace = true }
+ed25519-dalek = { workspace = true }
+google-cloud-kms-v1 = { workspace = true, optional = true }
+hex = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lib]
+path = "lib.rs"
+doctest = false # no doc tests; skips an empty run per crate
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+google-cloud-gax = { workspace = true }
+
+[[bin]]
+name = "fastwithdraw-pkcs11"
+path = "bin/fastwithdraw_pkcs11.rs"
+test = false # no tests in the binaries
