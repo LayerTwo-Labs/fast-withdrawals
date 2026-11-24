@@ -40,7 +40,7 @@ hmac = "0.12.1"
 http = "1"
 jsonwebtoken = "9.3"
 libtest-mimic = "0.8.1"
-parking_lot = "0.12"
+parking_lot = "0.13"
 postgresql_embedded = "0.20"
 # The version thunder_types' signing takes.
 rand = { version = "0.10", default-features = false, features = ["std", "thread_rng"] }
